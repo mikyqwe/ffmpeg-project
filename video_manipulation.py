@@ -2,6 +2,7 @@ import os
 import random
 import numpy as np
 import cv2
+import shutil
 
 def process_video(input_folder, output_folder):
     # Iterate through all the files in the input folder
@@ -9,6 +10,8 @@ def process_video(input_folder, output_folder):
         if file.endswith(".mp4"):
             # Get the full path of the input file
             input_path = os.path.join(input_folder, file)
+            # Get number of fps
+            fps = os.popen(f'ffprobe -v 0 -of csv=p=0 -select_streams v:0 -show_entries stream=r_frame_rate {input_path}').read().strip()
             # Create the output path for the cropped video
             cropped_output_path = os.path.join(output_folder, "cropped_" + file)
             # Crop the video by 10% width and 10% height
@@ -18,13 +21,16 @@ def process_video(input_folder, output_folder):
             if not os.path.exists(frames_folder):
                 os.makedirs(frames_folder)
             # Extract all the frames from the cropped video
-            os.system(f'ffmpeg -i {cropped_output_path} -vf "fps=1" {os.path.join(frames_folder, "frame%d.png")}')
+            os.system(f'ffmpeg -i {cropped_output_path} -vf "fps={fps}" -q:v 2 {os.path.join(frames_folder, "frame%d.png")}')
             # Iterate through all the frames
-            for i in range(len(os.listdir(frames_folder))):
+            for i in range(1,len(os.listdir(frames_folder))):
                 # Get the full path of the current frame
                 frame_path = os.path.join(frames_folder, f"frame{i}.png")
                 # Load the frame
-                frame = cv2.imread(frame_path)
+                if os.path.exists(frame_path):
+                    frame = cv2.imread(frame_path)
+                else:
+                    print(f"Frame {frame_path} not found")
                 # Replace frame with the one before it at a 14% chance
                 if random.random() < 0.14:
                     frame = cv2.imread(os.path.join(frames_folder, f"frame{i-1}.png"))
@@ -40,7 +46,14 @@ def process_video(input_folder, output_folder):
             # Create the output path for the final video
             output_path = os.path.join(output_folder, "pro_" + file)
             # Combine the frames to form a video
-            os.system(f'ffmpeg -framerate 1 -i {os.path.join(frames_folder, "frame%d.png")} -c:v libx264 -r 30 -pix_fmt yuv420p {output_path}')
-
+            os.system(f'ffmpeg -i {input_path} -i {os.path.join(frames_folder, "frame%d.png")} -c:v libx264 -r {fps} -c:a copy -map 0:a -map 1:v -pix_fmt yuv420p {output_path}')
+            for file in os.listdir(output_folder):
+                if not file.startswith("pro_"):
+                    path = os.path.join(output_folder, file)
+                    if os.path.isfile(path):
+                        os.remove(path)
+                    else:
+                        shutil.rmtree(path)
+                
 # Example usage:
-process_video("/path/to/input", "/path/to/output")
+process_video("C:\input", "C:\output")
